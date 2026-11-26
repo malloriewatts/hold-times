@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Protein Hold Times</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1d1b18;--mute:#6f6a62;--line:#e0dbd0;--accent:#c8102e;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#141311;--card:#201e1b;--ink:#f3efe8;--mute:#a39d92;--line:#35322d;--accent:#e63950;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:1.2rem;letter-spacing:.04em;text-transform:uppercase}
+nav a{color:var(--mute);text-decoration:none;font-size:.9rem;margin-left:14px}
+nav a.on{color:var(--accent);font-weight:700}
+main{padding:16px;max-width:1100px;margin:0 auto}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-top:8px solid var(--c,var(--accent));border-radius:14px;padding:16px}
+.card h2{margin:0 0 4px;font-size:1.25rem}
+.sub{color:var(--mute);font-size:.85rem;margin-bottom:12px;min-height:1.1em}
+.btns{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+button{font:inherit;cursor:pointer;border:2px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:16px 0;font-size:1.3rem;font-weight:700;touch-action:manipulation}
+button.sel{background:var(--c);border-color:var(--c);color:var(--ci)}
+button.clear{grid-column:1/-1;padding:10px 0;font-size:.95rem;font-weight:600;color:var(--mute)}
+.pick{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:30px}
+.pick a{display:block;text-align:center;padding:40px 16px;border-radius:14px;background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:1.4rem;font-weight:700}
+.board{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.tile{background:var(--card);border:3px solid var(--c);border-top-width:14px;border-radius:18px;padding:22px;text-align:center}
+.tile .n{font-size:1.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+.tile .t{font-size:5.5rem;font-weight:900;line-height:1.1;color:var(--c);font-variant-numeric:tabular-nums}
+.tile .t.none{color:var(--mute);font-size:2.6rem;line-height:2.1}
+.tile .ago{color:var(--mute);font-size:.9rem;min-height:1.2em}
+.status{color:var(--mute);font-size:.8rem;text-align:center;margin:16px 0}
+.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:16px}
+.bar label{display:flex;flex-direction:column;font-size:.8rem;color:var(--mute);gap:4px}
+.bar input,.bar select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.bar button{padding:10px 16px;font-size:.95rem}
+.scroll{overflow-x:auto;margin-bottom:22px}
+table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--line)}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.8rem;color:var(--mute);text-transform:uppercase}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;vertical-align:middle}
+h3{margin:6px 0 10px}
+.gate{max-width:360px;margin:40px auto}
+.gate input{font:inherit;font-size:1.3rem;padding:12px;width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);text-align:center;letter-spacing:.3em}
+.gate button{width:100%;padding:12px;font-size:1rem;margin-top:4px}
+</style>
+</head>
+<body>
+<header><h1>Hold Times</h1><nav><a href="#kitchen" id="nk">Kitchen</a><a href="#display" id="nd">Front of House</a><a href="#history" id="nh">History</a></nav></header>
+<main id="app"></main>
+<div class="status" id="status">Connecting…</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const sb=supabase.createClient("https://spqsdjiqlmfgybnxzwvu.supabase.co","sb_publishable_sMsSpVZyhWnpDy2YmMfl8g_BMQgju2D");
+// Standard protein color coding: [key, label, color, text color on that color]
+const PROTEINS=[["filets","Filets","#1e6fd9","#fff"],["spicy","Spicy","#d92d20","#fff"],["nuggets","Nuggets","#e8559a","#fff"],["strips","Strips","#2e9e4f","#fff"],["grilled_filets","Grilled Filets","#c9a46b","#1d1b18"],["grilled_nuggets","Grilled Nuggets","#7d838c","#fff"]];
+const MINS=[1,2,3,4,5];
+let holds={},offset=0,kPin=null,hPin=null,hist=[],hFrom="",hTo="",lastAct=Date.now(),changing=false,note="";
+try{kPin=localStorage.getItem("kpin");}catch(e){}
+const $=id=>document.getElementById(id);
+const pad=n=>String(n).padStart(2,"0");
+const now=()=>Date.now()+offset;
+const dayStr=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const pInfo=k=>PROTEINS.find(p=>p[0]===k)||[k,k,"#888","#fff"];
+function el(tag,txt,cls){const e=document.createElement(tag);if(txt!==undefined)e.textContent=txt;if(cls)e.className=cls;return e;}
+function view(){return location.hash==="#kitchen"?"kitchen":location.hash==="#display"?"display":location.hash==="#history"?"history":"pick";}
+function active(k){const c=holds[k];return c&&c.m&&c.t+c.m*60000>now()?c:{};}
+function setStatus(t){$("status").textContent=t;}
+["pointerdown","keydown"].forEach(n=>addEventListener(n,()=>{lastAct=Date.now();}));
+
+function gate(app,title,sub,confirm,onSubmit){
+  const box=el("div",undefined,"card gate");
+  box.append(el("h2",title),el("div",sub,"sub"));
+  const mk=ph=>{const i=document.createElement("input");i.type="password";i.inputMode="numeric";i.maxLength=8;i.placeholder=ph;i.autocomplete="off";return i;};
+  const a=mk(confirm?"New PIN":"PIN"),b=confirm?mk("Confirm PIN"):null,msg=el("div",note,"sub"),go=el("button",confirm?"Save PIN":"Unlock");
+  note="";
+  const submit=async()=>{
+    if(confirm){if(!/^\d{4,8}$/.test(a.value)){msg.textContent="Use 4–8 digits.";return;}if(a.value!==b.value){msg.textContent="PINs don't match.";return;}}
+    go.disabled=true;const err=await onSubmit(a.value);go.disabled=false;if(err){msg.textContent=err;a.value="";}
+  };
+  go.onclick=submit;[a,b].forEach(i=>{if(i)i.onkeydown=e=>{if(e.key==="Enter")submit();};});
+  box.appendChild(a);if(b)box.appendChild(b);box.append(go,msg);app.appendChild(box);return box;
+}
+async function checkKitchen(p){
+  const {data,error}=await sb.rpc("check_pin",{p_kind:"kitchen",p_pin:p});
+  if(error)return "Could not connect.";
+  if(data==="locked")return "Too many attempts. Wait a minute.";
+  if(data!=="ok")return "Incorrect PIN.";
+  kPin=p;try{localStorage.setItem("kpin",p);}catch(e){}render();return null;
+}
+
+function render(){
+  const v=view(),app=$("app");
+  $("nk").className=v==="kitchen"?"on":"";$("nd").className=v==="display"?"on":"";$("nh").className=v==="history"?"on":"";
+  app.textContent="";
+  if(v==="pick"){const d=el("div",undefined,"pick");[["#kitchen","Kitchen (set times)"],["#display","Front of House (view only)"],["#history","History (PIN required)"]].forEach(([h,l])=>{const a=el("a",l);a.href=h;d.appendChild(a);});app.appendChild(d);return;}
+  if(v==="history"){renderHistory(app);return;}
+  if(v==="kitchen"&&!kPin){gate(app,"Kitchen","Enter the kitchen PIN. This tablet will remember it.",false,checkKitchen);return;}
+  const wrap=el("div",undefined,v==="kitchen"?"grid":"board");
+  if(note&&v==="kitchen"){app.appendChild(el("div",note,"sub"));note="";}
+  PROTEINS.forEach(([k,label,color,ink])=>{
+    const cur=active(k);
+    if(v==="kitchen"){
+      const c=el("div",undefined,"card");c.style.setProperty("--c",color);c.style.setProperty("--ci",ink);
+      const s=el("div",undefined,"sub");
+      if(cur.m){s.append("Hold "+cur.m+" min · ");const cd=el("b");cd.className="cd";cd.dataset.k=k;s.appendChild(cd);}else s.textContent="No time set";
+      const b=el("div",undefined,"btns");
+      MINS.forEach(m=>{const x=el("button",String(m));x.className=cur.m===m?"sel":"";x.setAttribute("aria-label",label+" "+m+" minutes");x.onclick=()=>setHold(k,m);b.appendChild(x);});
+      const cl=el("button","Clear","clear");cl.onclick=()=>setHold(k,null);b.appendChild(cl);
+      c.append(el("h2",label),s,b);wrap.appendChild(c);
+    }else{
+      const t=el("div",undefined,"tile");t.style.setProperty("--c",color);
+      const tm=el("div",undefined,"t");
+      if(cur.m){tm.classList.add("cd");tm.dataset.k=k;}else{tm.classList.add("none");tm.textContent="—";}
+      t.append(el("div",label,"n"),tm,el("div",cur.m?"Hold time: "+cur.m+" min":"","ago"));wrap.appendChild(t);
+    }
+  });
+  app.appendChild(wrap);tick();
+}
+
+async function setHold(k,m){
+  holds[k]={m:m||null,t:m?now():0};render();
+  const {data,error}=await sb.rpc("set_hold",{p_pin:kPin,p_protein:k,p_minutes:m});
+  if(error||data!=="ok"){
+    if(data==="bad"){kPin=null;try{localStorage.removeItem("kpin");}catch(e){}note="PIN is no longer valid. Enter it again.";}
+    else note=data==="locked"?"Too many attempts. Wait a minute.":"Could not save. Check the connection.";
+    await loadHolds();render();
+  }
+}
+
+async function loadHolds(){
+  try{
+    const [h,t]=await Promise.all([sb.from("holds").select("*"),sb.rpc("server_time")]);
+    if(t.data)offset=new Date(t.data).getTime()-Date.now();
+    if(h.error)throw h.error;
+    holds={};h.data.forEach(r=>{holds[r.protein]={m:r.minutes,t:new Date(r.set_at).getTime()};});
+    if(view()==="display"||(view()==="kitchen"&&kPin&&!note))render();
+  }catch(e){setStatus("Connection problem, retrying…");}
+}
+
+function tick(){
+  let done=false;
+  document.querySelectorAll(".cd").forEach(e=>{
+    const c=active(e.dataset.k);if(!c.m){done=true;return;}
+    const s=Math.ceil((c.t+c.m*60000-now())/1000);e.textContent=Math.floor(s/60)+":"+pad(s%60);
+  });
+  if(done)render();
+  if(hPin&&(view()!=="history"||Date.now()-lastAct>300000)){hPin=null;hist=[];changing=false;if(view()==="history")render();}
+}
+
+// ---- History (PIN checked on the server) ----
+async function fetchHist(pin){
+  const p_from=hFrom?new Date(hFrom+"T00:00").toISOString():null;
+  let p_to=null;if(hTo){const d=new Date(hTo+"T00:00");d.setDate(d.getDate()+1);p_to=d.toISOString();}
+  const {data,error}=await sb.rpc("get_history",{p_pin:pin,p_from,p_to});
+  if(error)return {err:"Could not connect."};
+  if(data.status==="locked")return {err:"Too many attempts. Wait a minute."};
+  if(data.status!=="ok")return {err:"Incorrect PIN."};
+  return {rows:data.rows.map(r=>({t:new Date(r.t).getTime(),k:r.p,m:r.m||0}))};
+}
+function renderHistory(app){
+  if(!hPin){gate(app,"History is locked","Enter the history PIN to view logged data.",false,async p=>{const r=await fetchHist(p);if(r.err)return r.err;hPin=p;hist=r.rows;render();return null;});return;}
+  if(changing){
+    const box=gate(app,"Change PIN","Choose which PIN to change, then enter the new one.",true,async p=>{
+      const {data,error}=await sb.rpc("change_pin",{p_admin_pin:hPin,p_kind:sel.value,p_new:p});
+      if(error||data!=="ok")return "Could not update the PIN.";
+      if(sel.value==="history")hPin=p;changing=false;note="PIN updated.";render();return null;});
+    const sel=document.createElement("select");[["kitchen","Kitchen PIN"],["history","History PIN"]].forEach(([v,l])=>{const o=el("option",l);o.value=v;sel.appendChild(o);});
+    sel.style.cssText="font:inherit;padding:10px;width:100%;margin-bottom:10px;border-radius:10px";box.insertBefore(sel,box.children[2]);
+    const cn=el("button","Cancel");cn.onclick=()=>{changing=false;render();};box.appendChild(cn);return;
+  }
+  const ev=hist;
+  if(note){app.appendChild(el("div",note,"sub"));note="";}
+  const bar=el("div",undefined,"bar");
+  [["From","hFrom"],["To","hTo"]].forEach(([l,v])=>{
+    const lab=el("label",l),inp=document.createElement("input");inp.type="date";inp.value=v==="hFrom"?hFrom:hTo;
+    inp.onchange=async()=>{if(v==="hFrom")hFrom=inp.value;else hTo=inp.value;const r=await fetchHist(hPin);if(r.rows)hist=r.rows;render();};
+    lab.appendChild(inp);bar.appendChild(lab);
+  });
+  const ex=el("button","Export CSV");ex.onclick=()=>exportCsv(ev);
+  const cp=el("button","Change PIN");cp.onclick=()=>{changing=true;render();};
+  const lk=el("button","Lock");lk.onclick=()=>{hPin=null;hist=[];render();};
+  bar.append(ex,cp,lk);app.appendChild(bar);
+  app.appendChild(el("h3","Summary ("+ev.length+" button presses)"));
+  const sc=el("div",undefined,"scroll"),st=el("table"),hr=el("tr");
+  ["Protein","1 min","2 min","3 min","4 min","5 min","Clears","Avg hold"].forEach(h=>hr.appendChild(el("th",h)));st.appendChild(hr);
+  PROTEINS.forEach(([k,label,color])=>{
+    const mine=ev.filter(e=>e.k===k),sets=mine.filter(e=>e.m>0),tr=el("tr"),c0=el("td"),dot=el("span","","dot");
+    dot.style.background=color;c0.append(dot,label);tr.appendChild(c0);
+    MINS.forEach(m=>tr.appendChild(el("td",String(sets.filter(e=>e.m===m).length))));
+    tr.appendChild(el("td",String(mine.length-sets.length)));
+    tr.appendChild(el("td",sets.length?(sets.reduce((a,e)=>a+e.m,0)/sets.length).toFixed(1)+" min":"—"));st.appendChild(tr);
+  });
+  sc.appendChild(st);app.appendChild(sc);
+  app.appendChild(el("h3","Recent activity"+(ev.length>200?" (latest 200, export for all)":"")));
+  const rc=el("div",undefined,"scroll"),rt=el("table"),rh=el("tr");
+  ["Date","Time","Protein","Action"].forEach(h=>rh.appendChild(el("th",h)));rt.appendChild(rh);
+  ev.slice(0,200).forEach(e=>{
+    const d=new Date(e.t),p=pInfo(e.k),tr=el("tr"),c=el("td"),dot=el("span","","dot");dot.style.background=p[2];c.append(dot,p[1]);
+    tr.append(el("td",dayStr(d)),el("td",d.toLocaleTimeString([],{hour:"numeric",minute:"2-digit",second:"2-digit"})),c,el("td",e.m?"Set "+e.m+" min":"Cleared"));rt.appendChild(tr);
+  });
+  if(!ev.length){const tr=el("tr"),td=el("td","No activity recorded yet.");td.colSpan=4;tr.appendChild(td);rt.appendChild(tr);}
+  rc.appendChild(rt);app.appendChild(rc);
+}
+function exportCsv(ev){
+  const rows=["timestamp_iso,date,time,hour,weekday,protein,action,hold_minutes"];
+  ev.slice().reverse().forEach(e=>{const d=new Date(e.t);
+    rows.push([d.toISOString(),dayStr(d),pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds()),d.getHours(),d.toLocaleDateString("en-US",{weekday:"long"}),pInfo(e.k)[1],e.m?"set":"clear",e.m||""].join(","));});
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([rows.join("\n")],{type:"text/csv"}));a.download="hold-time-log.csv";a.click();
+}
+
+addEventListener("hashchange",()=>{note="";render();});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadHolds();});
+setInterval(tick,1000);setInterval(loadHolds,15000);
+render();loadHolds();
+sb.channel("holds-live").on("postgres_changes",{event:"*",schema:"public",table:"holds"},loadHolds)
+  .subscribe(s=>setStatus(s==="SUBSCRIBED"?"Live":"Reconnecting…"));
+</script>
+</body>
+</html>
